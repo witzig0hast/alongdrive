@@ -200,7 +200,7 @@ export const InteractionMixin = {
     if (fAct) {
       if (fAct.kind === 'pump' || fAct.kind === 'fuelCar') {
         if (fDown) progress = progress ?? this.doFuelTransfer(fAct, held, dt);
-      } else if (fPressed || (fAct.kind === 'repair' && false)) this.doFAction(fAct, held);
+      } else if (fPressed) this.doFAction(fAct, held);
     }
     // Zeitlich begrenzte Aktionen (Reparatur)
     if (this.repairing) {
@@ -268,7 +268,7 @@ export const InteractionMixin = {
         break;
       }
       case 'enter':
-        this.enterCar(a.seat);
+        this.enterCar(this.net ? a.seat : 'driver');
         break;
     }
   },

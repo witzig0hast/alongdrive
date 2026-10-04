@@ -33,6 +33,7 @@ const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _q1 = new THREE.Quaternion();
 const _e1 = new THREE.Euler(0, 0, 0, 'YXZ');
+const _qFlip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
 
 export class Game {
@@ -42,6 +43,7 @@ export class Game {
     this.audio = new AudioEngine();
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.info.autoReset = false;
     this.running = false;
     this.paused = false;
     this.uiOpen = null; // 'inventory' | 'chat' | null
@@ -131,23 +133,19 @@ export class Game {
 
     const spawnX = cfg.save ? cfg.save.player.pos[0] : 3.2;
     const spawnZ = cfg.save ? cfg.save.player.pos[2] : 3.4;
-    // Startchunks laden (mit Fortschritt)
+    // Startchunks laden (mit Fortschritt); danach streamt die Welt bis zur gewählten Sichtweite nach
     const pre = 2;
-    const pcx = Math.floor(spawnX / CHUNK);
-    const pcz = Math.floor(spawnZ / CHUNK);
-    let done = 0;
+    this.world.radius = pre;
     const total = (pre * 2 + 1) ** 2;
-    for (let dz = -pre; dz <= pre; dz++) {
-      for (let dx = -pre; dx <= pre; dx++) {
-        this.world.update((pcx + dx + 0.5) * CHUNK, (pcz + dz + 0.5) * CHUNK, 1);
-        done++;
-        if (done % 3 === 0) {
-          onProgress(0.15 + 0.6 * (done / total), 'Welt wird erzeugt…');
-          await nextFrame();
-        }
+    for (let guard = 0; guard < 400; guard++) {
+      const pend = this.world.update(spawnX, spawnZ, 3);
+      if (guard % 2 === 0) {
+        onProgress(0.15 + 0.6 * Math.min(1, this.world.chunks.size / total), 'Welt wird erzeugt…');
+        await nextFrame();
       }
+      if (pend === 0) break;
     }
-    this.world.preload(spawnX, spawnZ, 2);
+    this.world.radius = settings.viewDistance;
 
     // Zombies
     const world = this.world;
@@ -341,8 +339,7 @@ export class Game {
     car.exitPos(seat, _v1);
     this.player.pos.copy(_v1);
     this.player.vel.set(0, 0, 0);
-    this.player.yaw = car.yawNow() + (seat === 'driver' ? Math.PI / 2 : -Math.PI / 2);
-    this.player.yaw += 0; // blickt vom Auto weg
+    this.player.yaw = car.yawNow() + (seat === 'driver' ? -Math.PI / 2 : Math.PI / 2); // blickt vom Auto weg
     this.player.pitch = 0;
     if (seat === 'driver') {
       car.driver = null;
@@ -405,8 +402,14 @@ export class Game {
       this._fpsT = 0;
     }
     try {
+      this.renderer.info.reset();
+      const t0 = performance.now();
       if (!this.paused) this.update(dt);
+      const t1 = performance.now();
       this.render(dt);
+      const t2 = performance.now();
+      this.cpuUpdate = (this.cpuUpdate || 0) * 0.95 + (t1 - t0) * 0.05;
+      this.cpuRender = (this.cpuRender || 0) * 0.95 + (t2 - t1) * 0.05;
     } catch (e) {
       console.error(e);
       this.errorCount = (this.errorCount || 0) + 1;
@@ -928,7 +931,7 @@ export class Game {
         car.eyeWorld(p.seat, cam.position);
         _e1.set(p.pitch, p.yaw, 0, 'YXZ');
         _q1.setFromEuler(_e1);
-        cam.quaternion.copy(car.quat).multiply(_q1);
+        cam.quaternion.copy(car.quat).multiply(_qFlip).multiply(_q1);
       } else {
         const hd = car.yawNow();
         let dh = hd - this.camHeading;
@@ -983,6 +986,8 @@ export class Game {
       dustColor: sky.scene.fog.color,
     };
     this.postfx.render(this.scene, cam, this.viewmodel.visible ? this.viewmodel.scene : null, fx);
+    this.drawCalls = this.renderer.info.render.calls;
+    this.drawTris = this.renderer.info.render.triangles;
   }
 
   objectiveHTML() {
@@ -1013,7 +1018,7 @@ export class Game {
       hud.setObjective(this.objectiveHTML());
       hud.updateHotbar(this.inv);
     }
-    const yaw = p.seat && this.camMode === 'fp' ? this.car.yawNow() + p.yaw : p.seat ? this.camHeading + p.yaw : p.yaw;
+    const yaw = p.seat && this.camMode === 'fp' ? this.car.yawNow() + Math.PI + p.yaw : p.seat ? this.camHeading + Math.PI + p.yaw : p.yaw;
     const marks = [];
     if (!this.car.assembled() || this.car.fuel < 1) {
       marks.push({ dx: -62 - p.pos.x, dz: 40 - p.pos.z, color: '#8fd18a' });
@@ -1025,7 +1030,7 @@ export class Game {
     if (this.debugOn) {
       const ch = this.world.chunks.size;
       hud.setDebug(
-        `FPS ${this.fps.toFixed(0)}  Draw ${this.renderer.info.render.calls}  Tris ${(this.renderer.info.render.triangles / 1000).toFixed(0)}k\n` +
+        `FPS ${this.fps.toFixed(0)}  Draw ${this.drawCalls}  Tris ${((this.drawTris || 0) / 1000).toFixed(0)}k  CPU upd ${(this.cpuUpdate || 0).toFixed(1)} / rnd ${(this.cpuRender || 0).toFixed(1)} ms  Chunk-Gen max ${(this.world.stats.maxMs || 0).toFixed(1)} ms\n` +
           `Pos ${p.pos.x.toFixed(1)} ${p.pos.y.toFixed(1)} ${p.pos.z.toFixed(1)}\n` +
           `Chunk ${Math.floor(p.pos.x / CHUNK)},${Math.floor(p.pos.z / CHUNK)}  geladen ${ch}  Seed "${this.seed}"\n` +
           `Zombies ${this.zsim.zombies.size}  Items ${this.items.items.size}  Zeit ${s.hour.toFixed(2)}h  Sturm ${s.storm.toFixed(2)}\n` +
@@ -1116,7 +1121,7 @@ export class Game {
     p.yaw = s.player.yaw;
     p.pitch = s.player.pitch;
     this.vitals.load(s.player.vitals);
-    this.car.load(s.car);
+    this.car.loadState(s.car);
     // Gegenstände wiederherstellen (Inventar zuerst mit Entities, die nicht in der Welt liegen)
     this.items.restore(s.world);
     this.inv.load(s.player.inv, (o) => {

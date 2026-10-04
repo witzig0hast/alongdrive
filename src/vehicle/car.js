@@ -801,7 +801,7 @@ export class Car {
     };
   }
 
-  load(o) {
+  loadState(o) {
     this.installed = o.installed || {};
     this.fuel = o.fuel ?? 0;
     this.temp = o.temp ?? 20;

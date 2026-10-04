@@ -155,6 +155,9 @@ class Chunk {
     // Höhengitter mit 1 Zelle Rand für Normalen
     const pn = segs + 3;
     const H = new Float32Array(pn * pn);
+    const PL = new Float32Array(pn * pn);
+    const SA = new Float32Array(pn * pn);
+    const CA = new Float32Array(pn * pn);
     const S = {};
     const posN = n1 * n1;
     const skirts = 4 * segs;
@@ -165,7 +168,12 @@ class Chunk {
     const uv = new Float32Array(total * 2);
     for (let j = 0; j < pn; j++) {
       for (let i = 0; i < pn; i++) {
-        H[j * pn + i] = T.heightAt(x0 + (i - 1) * step, z0 + (j - 1) * step);
+        T.sample(x0 + (i - 1) * step, z0 + (j - 1) * step, S);
+        const k = j * pn + i;
+        H[k] = S.h;
+        PL[k] = S.plat;
+        SA[k] = S.salt;
+        CA[k] = S.canyon;
       }
     }
     const tmp = [0, 0, 0];
@@ -194,6 +202,10 @@ class Chunk {
         nor[idx * 3 + 2] = nz;
         uv[idx * 2] = wx / 9;
         uv[idx * 2 + 1] = wz / 9;
+        const k = (j + 1) * pn + (i + 1);
+        S.plat = PL[k];
+        S.salt = SA[k];
+        S.canyon = CA[k];
         terrainColor(T, wx, wz, h, ny, S, tmp);
         col[idx * 3] = tmp[0];
         col[idx * 3 + 1] = tmp[1];
@@ -277,11 +289,13 @@ class Chunk {
   }
 }
 
-const _rc = [0, 0, 0];
+const hash2 = (x, y) => {
+  const s = Math.sin(Math.floor(x) * 12.9898 + Math.floor(y) * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+};
 function terrainColor(T, x, z, h, ny, S, out) {
-  T.sample(x, z, S);
   const nv = T.n[4](x * 0.09, z * 0.09) * 0.5 + 0.5;
-  const nv2 = T.n[7](x * 0.6, z * 0.6) * 0.5 + 0.5;
+  const nv2 = hash2(x * 0.6, z * 0.6);
   let r = lerp(SAND_DARK[0], SAND[0], nv);
   let g = lerp(SAND_DARK[1], SAND[1], nv);
   let b = lerp(SAND_DARK[2], SAND[2], nv);
@@ -326,7 +340,7 @@ export class World {
 
   lodFor(d) {
     const l = this.quality.lod;
-    if (d <= 1) return l ? 32 : 64;
+    if (d <= 1) return l ? 32 : 48;
     if (d <= 2) return l ? 16 : 32;
     if (d <= 4) return l ? 12 : 16;
     return l ? 8 : 12;
@@ -340,12 +354,15 @@ export class World {
     return this.chunks.get(chunkKey(cx, cz));
   }
 
-  /** Lädt Chunks um (px,pz). budget = max. neue Chunks pro Aufruf. */
+  /**
+   * Lädt/entlädt Chunks um (px,pz). Pro Aufruf werden höchstens `budget` "schwere" Schritte ausgeführt
+   * (Terrain-Mesh eines neuen Chunks > Inhalt eines neuen Chunks > LOD-Wechsel), damit keine Ruckler entstehen.
+   * Gibt die Anzahl offener Arbeiten zurück.
+   */
   update(px, pz, budget = 1) {
     const pcx = Math.floor(px / CHUNK);
     const pcz = Math.floor(pz / CHUNK);
     const R = this.radius;
-    // Entladen
     for (const [key, ch] of this.chunks) {
       const d = Math.max(Math.abs(ch.cx - pcx), Math.abs(ch.cz - pcz));
       if (d > R + 1) {
@@ -354,8 +371,24 @@ export class World {
         this.chunks.delete(key);
       }
     }
-    // Fehlende sammeln (nahe zuerst)
-    let made = 0;
+    const t0 = performance.now();
+    let ops = 0;
+    let pending = 0;
+    // 1) Terrain-Meshes für neu erzeugte Chunks
+    let needTerrain = [];
+    for (const ch of this.chunks.values()) if (ch.lod < 0) needTerrain.push(ch);
+    needTerrain.sort((a, b) => (a.cx - pcx) ** 2 + (a.cz - pcz) ** 2 - ((b.cx - pcx) ** 2 + (b.cz - pcz) ** 2));
+    for (const ch of needTerrain) {
+      if (ops >= budget) {
+        pending++;
+        continue;
+      }
+      const tt = performance.now();
+      ch.buildTerrain(this.lodFor(Math.max(Math.abs(ch.cx - pcx), Math.abs(ch.cz - pcz))));
+      this.stats.maxTerrain = Math.max(this.stats.maxTerrain || 0, performance.now() - tt);
+      ops++;
+    }
+    // 2) fehlende Chunks (nahe zuerst)
     const missing = [];
     for (let dz = -R; dz <= R; dz++) {
       for (let dx = -R; dx <= R; dx++) {
@@ -367,37 +400,49 @@ export class World {
     }
     missing.sort((a, b) => a[2] - b[2]);
     for (const [cx, cz] of missing) {
-      if (made >= budget) break;
+      if (ops >= budget) {
+        pending++;
+        continue;
+      }
       const ch = new Chunk(this, cx, cz);
-      const d = Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz));
+      const tc = performance.now();
       ch.buildContent();
-      ch.buildTerrain(this.lodFor(d));
+      this.stats.maxContent = Math.max(this.stats.maxContent || 0, performance.now() - tc);
       this.root.add(ch.group);
       this.chunks.set(ch.key, ch);
       this.onChunkLoaded?.(ch);
-      made++;
+      ops++;
+      pending++; // Terrain-Mesh folgt im nächsten Schritt
     }
-    // LOD-Anpassung (max. 2 pro Aufruf)
-    let rebuilt = 0;
-    for (const ch of this.chunks.values()) {
-      if (rebuilt >= 2) break;
-      const d = Math.max(Math.abs(ch.cx - pcx), Math.abs(ch.cz - pcz));
-      const want = this.lodFor(d);
-      if (want !== ch.lod) {
-        ch.buildTerrain(want);
-        rebuilt++;
+    // 3) LOD-Wechsel
+    if (ops < budget) {
+      for (const ch of this.chunks.values()) {
+        if (ch.lod < 0) continue;
+        const want = this.lodFor(Math.max(Math.abs(ch.cx - pcx), Math.abs(ch.cz - pcz)));
+        if (want !== ch.lod) {
+          if (ops >= budget) {
+            pending++;
+            break;
+          }
+          ch.buildTerrain(want);
+          ops++;
+        }
       }
     }
+    const ms = performance.now() - t0;
+    this.stats.lastMs = ms;
+    if (ops) this.stats.maxMs = Math.max(this.stats.maxMs || 0, ms);
     this.stats.chunks = this.chunks.size;
-    this.stats.pending = missing.length - made;
-    return missing.length - made;
+    this.stats.pending = pending;
+    return pending;
   }
 
   /** Lädt synchron alles im Radius (Ladebildschirm) */
   preload(px, pz, radius = 2) {
     const old = this.radius;
     this.radius = radius;
-    while (this.update(px, pz, 4) > 0);
+    let guard = 0;
+    while (this.update(px, pz, 6) > 0 && guard++ < 400);
     this.radius = old;
   }
 

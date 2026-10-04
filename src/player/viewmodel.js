@@ -22,13 +22,13 @@ export class ViewModel {
     const skin = new THREE.MeshLambertMaterial({ color: 0xc89a78 });
     const sleeve = new THREE.MeshLambertMaterial({ color: 0x5a4a3a });
     this.armR = new THREE.Group();
-    const fr = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.5), sleeve);
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.45), sleeve);
     fr.position.set(0, 0, 0.25);
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.11), skin);
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.1), skin);
     hand.position.set(0, 0, 0.0);
     this.armR.add(fr, hand);
-    this.armR.position.set(0.07, -0.12, 0.0);
-    this.armR.rotation.set(-0.15, -0.25, 0);
+    this.armR.position.set(0.05, -0.1, 0.0);
+    this.armR.rotation.set(-0.12, -0.2, 0);
     this.anchor.add(this.armR);
     this.armL = this.armR.clone();
     this.armL.position.set(-0.55, -0.18, -0.15);
@@ -72,9 +72,9 @@ export class ViewModel {
       g.rotation.set(-0.5, Math.PI / 2 + 0.2, 0.2);
       g.position.set(0, 0.1, -0.1);
     } else if (def.size === 'large') {
-      g.scale.setScalar(0.8);
-      g.position.set(-0.24, -0.08, -0.3);
-      g.rotation.set(0.15, 0.4, 0);
+      g.scale.setScalar(0.55);
+      g.position.set(-0.2, -0.12, -0.2);
+      g.rotation.set(0.15, 0.5, 0);
       this.armL.visible = true;
     } else {
       g.rotation.set(0.2, -0.5, 0);
@@ -118,6 +118,7 @@ export class ViewModel {
       a.rotation.x += 0.5;
       a.position.y -= 0.12;
     }
+    this.armR.visible = !!this.type || this.swingT >= 0;
     this.scene.visible = this.visible;
   }
 

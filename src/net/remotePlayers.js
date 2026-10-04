@@ -95,7 +95,7 @@ export class RemotePlayer {
       this.yaw += d * k;
     }
     this.group.position.copy(this.pos);
-    this.group.rotation.y = this.yaw;
+    this.group.rotation.y = this.yaw + Math.PI; // Spieler-Yaw 0 = Blick nach -Z, Modell blickt nach +Z
     this.group.visible = !this.dead;
     const moving = this.a?.moving;
     this.walk += dt * (this.a?.sprint ? 11 : 7) * (moving ? 1 : 0);

@@ -13,6 +13,7 @@ const canvas = document.getElementById('c');
 input.init(canvas);
 const game = new Game(canvas);
 window.__game = game; // Debug / automatisierte Tests
+window.__input = input;
 
 const params = new URLSearchParams(location.search);
 const touchMode = params.has('touch') || (window.matchMedia && matchMedia('(pointer: coarse)').matches && 'ontouchstart' in window);
@@ -199,3 +200,11 @@ window.__app = app;
 if (params.has('autostart')) {
   app.startNew(params.get('seed') || 'test-1', 'Test');
 }
+
+// Wächter: Maus verloren (z. B. nach Esc im Inventar) -> "Klicke zum Fortfahren"
+setInterval(() => {
+  if (game.running && !input.locked && !game.uiOpen && !game.dead && !menus.current) {
+    document.getElementById('click-to-play').classList.remove('hidden');
+    if (!game.net) game.paused = true;
+  }
+}, 700);
