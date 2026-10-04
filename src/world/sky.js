@@ -150,7 +150,7 @@ export class Sky {
     this._tmp.copy(this.sunDir);
     if (!sunUp) this._tmp.multiplyScalar(-1); // Mond
     const sunI = smooth(-0.02, 0.28, e) * 3.1;
-    const moonI = 0.42 * (1 - smooth(-0.2, 0.0, e));
+    const moonI = 0.6 * (1 - smooth(-0.2, 0.0, e));
     this.sun.intensity = (sunUp ? sunI : moonI) * (1 - storm * 0.55);
     this.sun.color.setRGB(1, lerp(0.62, 0.96, smooth(0.0, 0.5, e)), lerp(0.35, 0.88, smooth(0.0, 0.5, e)));
     if (!sunUp) this.sun.color.setRGB(0.55, 0.65, 1.0);
@@ -164,7 +164,7 @@ export class Sky {
     this.sun.target.updateMatrixWorld();
     this.hemi.color.copy(z).lerp(new THREE.Color(1, 1, 1), 0.35);
     this.hemi.groundColor.setRGB(0.55, 0.45, 0.3).multiplyScalar(lerp(0.12, 1, d));
-    this.hemi.intensity = lerp(0.26, 0.85, d) * (1 - storm * 0.3);
+    this.hemi.intensity = lerp(0.38, 0.85, d) * (1 - storm * 0.3);
 
     // Nebel
     const fogCol = this.scene.fog.color;

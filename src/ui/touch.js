@@ -70,15 +70,15 @@ export function setupTouch(input, game) {
   }, { passive: false });
   look.addEventListener('touchend', () => { lid = null; });
 
-  const button = (label, action, right, bottom, opts = {}) => {
+  const grid = document.createElement('div');
+  grid.className = 'btns';
+  root.appendChild(grid);
+  const button = (label, action, cell, opts = {}) => {
     const b = document.createElement('button');
     b.className = 'tb';
     b.textContent = label;
-    b.style.right = right + 'px';
-    b.style.bottom = bottom + 'px';
-    if (opts.size) {
-      b.style.width = b.style.height = opts.size + 'px';
-    }
+    b.style.gridColumn = String(cell[1]);
+    b.style.gridRow = String(cell[0]);
     const down = (e) => {
       e.preventDefault();
       if (opts.toggle) {
@@ -98,26 +98,27 @@ export function setupTouch(input, game) {
     b.addEventListener('touchstart', down, { passive: false });
     b.addEventListener('touchend', up, { passive: false });
     b.addEventListener('touchcancel', up, { passive: false });
-    root.appendChild(b);
+    grid.appendChild(b);
     return b;
   };
-  button('E', 'interact', 14, 150, { size: 66 });
-  button('F', 'use', 90, 190, { size: 66 });
-  button('⤒', 'jump', 14, 230, { size: 60 });
-  button('⤓', 'crouch', 14, 20, { size: 50 });
-  button('Q', 'drop', 80, 100, { size: 48 });
-  button('G', 'throw', 140, 100, { size: 48 });
-  button('🎒', 'inventory', 14, 300, { size: 48 });
-  button('R', 'engine', 80, 40, { size: 48 });
-  button('H', 'horn', 140, 40, { size: 48 });
-  button('💡', 'lights', 200, 40, { size: 48 });
-  button('📷', 'camera', 200, 100, { size: 48 });
+  // Zeile, Spalte
+  button('🎒', 'inventory', [1, 1]);
+  button('📷', 'camera', [1, 2]);
+  button('💡', 'lights', [1, 3]);
+  button('⤒', 'jump', [1, 4]);
+  button('Q', 'drop', [2, 1]);
+  button('G', 'throw', [2, 2]);
+  button('H', 'horn', [2, 3]);
+  button('R', 'engine', [2, 4]);
+  button('⤓', 'crouch', [3, 1]);
+  button('F', 'use', [3, 3]).classList.add('big');
+  button('E', 'interact', [3, 4]).classList.add('big');
   const pause = document.createElement('button');
   pause.className = 'tb';
   pause.textContent = '❚❚';
   pause.style.right = '14px';
-  pause.style.top = '70px';
-  pause.style.width = pause.style.height = '44px';
+  pause.style.top = '78px';
+  pause.style.width = pause.style.height = '40px';
   pause.addEventListener('touchstart', (e) => {
     e.preventDefault();
     input.unlock();

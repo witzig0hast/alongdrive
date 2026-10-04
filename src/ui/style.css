@@ -102,6 +102,9 @@ input[type=range] { padding: 0; }
 #touch .stick { position: absolute; left: 24px; bottom: 90px; width: 140px; height: 140px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.3); pointer-events: auto; touch-action: none; }
 #touch .stick i { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px; border-radius: 50%; background: rgba(255,255,255,.35); }
 #touch .look { position: absolute; right: 0; top: 0; width: 50%; height: 100%; pointer-events: auto; touch-action: none; }
+#touch .btns { position: absolute; right: 10px; bottom: 10px; display: grid; grid-template-columns: repeat(4, 52px); grid-template-rows: repeat(3, 52px); gap: 8px; pointer-events: none; }
+#touch .btns .tb { position: static; width: 52px; height: 52px; }
+#touch .btns .tb.big { background: rgba(224,162,59,.35); border-color: rgba(255,220,150,.7); font-weight: 700; font-size: 18px; }
 #touch .tb { position: absolute; width: 58px; height: 58px; border-radius: 50%; background: rgba(0,0,0,.45); border: 2px solid rgba(255,255,255,.4); color: #fff; font-size: 13px; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; text-align: center; padding: 0; }
 #touch .tb.on { background: rgba(224,162,59,.6); }
-@media (max-width: 800px) { #vitals { width: 150px; } .slot { width: 50px; height: 50px; } .slot img { width: 40px; height: 40px; } #objective { display: none; } #carhud { max-width: 55vw; } #chat { bottom: 200px; } }
+@media (max-width: 900px), (max-height: 520px) { #vitals { width: 150px; left: 8px; top: 8px; } .bar { height: 14px; } .bar span { font-size: 10px; line-height: 15px; } .slot { width: 44px; height: 44px; } .slot img { width: 34px; height: 34px; } #hotbar { bottom: 8px; } #objective { display: none; } #carhud { max-width: 46vw; right: auto; left: 8px; bottom: 60px; } #chat { bottom: 200px; } #msgs { bottom: 66px; } #topright { right: 8px; top: 6px; font-size: 12px; } #hint { top: 62%; font-size: 14px; } #compass { transform: translateX(-50%) scale(.8); top: 4px; } }

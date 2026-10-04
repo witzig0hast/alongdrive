@@ -208,3 +208,8 @@ setInterval(() => {
     if (!game.net) game.paused = true;
   }
 }, 700);
+
+// Beim Verlassen des Tabs automatisch sichern (nur Einzelspieler)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.running && !game.net && !game.dead) app.saveNow(true);
+});

@@ -22,7 +22,8 @@ npm run server                   # lokal, Port 8080
 docker compose up --build        # http://localhost:8080 (liefert auch den gebauten Client aus)
 ```
 
-Weitere Befehle: `npm run build` (Produktions-Build nach `dist/`), `npm run preview`, `npm test` (Unit-Tests).
+Weitere Befehle: `npm run build` (Produktions-Build nach `dist/`), `npm run preview`, `npm test`
+(Unit-Tests für Terrain/Weltgenerierung/Kollision/KI/Überleben sowie ein Stabilitätstest der Fahrphysik).
 
 > Browser: aktuelles Chrome/Edge/Firefox mit WebGL2. Die Maus wird per Pointer Lock gesteuert – Klick ins Fenster startet/setzt fort.
 > Touch-Geräte werden automatisch erkannt (virtueller Joystick + Buttons); mit `?touch=1` lässt sich der Touch-Modus erzwingen.
@@ -66,7 +67,7 @@ Alle Tasten lassen sich unter *Einstellungen → Tastenbelegung* ändern.
 ## Funktionsumfang
 
 - **Endlose Welt:** 128-m-Chunks, Seed-basiertes Simplex-Noise (Dünen, Felsplateaus, Canyons, Salzebenen), LOD pro Chunk
-  (64/32/16/12 Segmente), Skirts gegen Nähte, Nebel, Frustum Culling, Instancing für Felsen und Pflanzen,
+  (48/32/16/12 Segmente), Skirts gegen Nähte, Nebel, Frustum Culling, Instancing für Felsen und Pflanzen,
   Chunks werden um den Spieler geladen/entladen.
 - **Points of Interest:** Tankstellen (funktionierende Zapfsäulen mit begrenztem Vorrat), Häuserruinen, Autowracks,
   Wassertürme, Funkmasten, Siedlungen, Militärposten – jeweils mit Loot-Tabellen und Zombie-Spawns.
@@ -111,6 +112,7 @@ src/
   net/                   WebSocket-Client, Mitspieler-Darstellung, Mehrspieler-Anbindung
 server/server.js         Mehrspieler-Server (ws), liefert optional dist/ aus
 tests/unit.mjs           Unit-Tests (Terrain, Weltgen, Kollision, KI, Überleben)
+tests/car.mjs            Stabilitäts-/Plausibilitätstests der Fahrphysik
 Dockerfile, docker-compose.yml
 ```
 
@@ -131,7 +133,8 @@ Ziel sind stabile 60 FPS auf einem Mittelklasse-Laptop:
 
 - Grafikqualität *Niedrig/Mittel/Hoch* (Schatten, Auflösung, MSAA, Partikel, LOD), Sichtweite 2–9 Chunks.
 - Chunk-Erzeugung auf höchstens einen Chunk pro Frame verteilt, Terrain-LOD-Rebuilds begrenzt.
-- Instancing für Felsen/Pflanzen, gemeinsam genutzte Geometrien für Gegenstände, ein zusammengeführtes Mesh pro Chunk-Struktur.
+- Instancing für Felsen, Pflanzen und **Loot** (ein `InstancedMesh` pro Gegenstandstyp, nur Ladeflächen-Items sind eigene Meshes),
+  ein zusammengeführtes Mesh pro Chunk-Struktur.
 - Physik nur in Spielernähe: Gegenstände werden jenseits von 110 m eingefroren, jenseits von 140 m ausgeblendet;
   das Auto schläft, wenn es steht; Zombies werden jenseits von 170 m entfernt.
 - Feste Anzahl dynamischer Lichter (keine Shader-Neukompilierung).
