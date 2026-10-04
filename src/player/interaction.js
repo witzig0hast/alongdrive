@@ -313,6 +313,7 @@ export const InteractionMixin = {
       held.state.fuel -= amt;
       car.fuel += amt;
     } else if (car.fuel >= cap - 0.05) this.hud.setHint('Tank ist voll');
+    this.fuelDirty = true;
     return car.fuel / cap;
   },
 

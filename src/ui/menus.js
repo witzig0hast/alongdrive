@@ -82,6 +82,7 @@ export class Menus {
     $('death-same').onclick = () => this.app.startNew(this.app.lastSeed, 'Wanderer');
     $('death-newworld').onclick = () => this.app.startNew(randomSeedString(), 'Wanderer');
     $('death-menu').onclick = () => this.app.quit();
+    $('death-respawn').onclick = () => this.app.mpRespawn();
     // Import
     $('save-import').onclick = () => $('import-file').click();
     $('import-file').onchange = async (e) => {
@@ -162,7 +163,10 @@ export class Menus {
     this.show('menu-pause');
   }
 
-  showDeath(info) {
+  showDeath(info, mp = false) {
+    $('death-same').classList.toggle('hidden', mp);
+    $('death-newworld').classList.toggle('hidden', mp);
+    $('death-respawn').classList.toggle('hidden', !mp);
     $('death-cause').textContent = info.cause || 'Das Ödland hat dich geholt.';
     $('death-stats').innerHTML = `<div><b>${info.km.toFixed(2)} km</b>gefahren</div><div><b>${info.days.toFixed(1)}</b>Tage überlebt</div><div><b>${info.kills}</b>Zombies getötet</div><div><b>${esc(info.seed)}</b>Seed</div>`;
     $('death-same').textContent = 'Gleicher Seed (' + info.seed + ')';

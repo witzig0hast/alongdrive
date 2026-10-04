@@ -26,6 +26,7 @@ import { ZombieView } from './ai/zombieView.js';
 import { AudioEngine } from './audio/audio.js';
 import { HUD } from './ui/hud.js';
 import { preloadIcons } from './ui/icons.js';
+import { NetMixin } from './net/mpGame.js';
 
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -124,6 +125,7 @@ export class Game {
     this.car = new Car(this.scene, this.world);
     this.items.car = this.car;
     this.items.clientId = (Math.random() * 1e6 | 0).toString(36);
+    if (cfg.mp) this.preApplyMp(cfg.mp.snapshot);
     this.world.onChunkLoaded = (ch) => this.onChunkLoaded(ch);
     this.world.onChunkUnloaded = (ch) => this.lightSources.delete(ch.key);
 
@@ -162,6 +164,7 @@ export class Game {
 
     // Neu oder geladen
     if (cfg.save) this.applySave(cfg.save);
+    else if (cfg.mp) this.applyMpSnapshot(cfg.mp.snapshot);
     else this.newGameSetup();
 
     this.audio.setVolume(settings.volume);
@@ -314,7 +317,6 @@ export class Game {
   // ------------------------------------------------------------------ Auto
   enterCar(seat) {
     const car = this.car;
-    if (this.net && seat === 'driver' && car.remote) return this.hud.toast('Jemand anderes fährt');
     if (seat === 'driver' && car.driver) seat = 'passenger';
     if (seat === 'passenger' && car.passenger) return this.hud.toast('Sitz besetzt');
     this.player.seat = seat;
@@ -644,11 +646,9 @@ export class Game {
   updateCarZombieCollisions(dt) {
     const car = this.car;
     const sp = Math.abs(car.speed);
-    if (sp < 3 || this.net) {
-      if (this.net && sp >= 3) this.netCarHits?.();
-      return;
-    }
-    for (const z of this.zsim.zombies.values()) {
+    if (sp < 3 || car.remote) return;
+    const list = this.net ? this.net.zombieList() : this.zsim.zombies.values();
+    for (const z of list) {
       if (z.state === ZS.DEAD) continue;
       if (Math.abs(z.x - car.pos.x) > 5 || Math.abs(z.z - car.pos.z) > 5) continue;
       car.worldToLocal(_v1.set(z.x, z.y + 0.9, z.z), _v2);
@@ -656,7 +656,7 @@ export class Game {
         if ((z.carHitT || 0) > this.time) continue;
         z.carHitT = this.time + 0.6;
         const dir = _v3.copy(car.vel).normalize();
-        this.zsim.damage(z.id, 20 + sp * 7, false, dir.x * (1 + sp * 0.2), dir.z * (1 + sp * 0.2), 'me');
+        this.damageZombie(z.id, 20 + sp * 7, false, dir.x * (1 + sp * 0.2), dir.z * (1 + sp * 0.2));
         car.damage(0.4 + sp * 0.12, 'front');
         car.vel.multiplyScalar(0.97);
         this.audio.play('hit', { pos: { x: z.x, y: z.y + 1, z: z.z }, vol: 1.2 });
@@ -710,7 +710,7 @@ export class Game {
         break;
       }
       case 'died': {
-        this.stats.kills = this.zsim.kills;
+        if (e.by === 'me' || (this.net && e.by === this.net.id)) this.stats.kills++;
         const z = this.zsim.zombies.get(e.id);
         if (z) this.audio.play('zdie', { pos: { x: z.x, y: z.y + 1, z: z.z } });
         break;
@@ -761,10 +761,11 @@ export class Game {
       cause: this.vitals.deathCause,
       km: this.car.odometer / 1000,
       days: Math.max(0, Math.floor((this.time / DAY_LENGTH) * 10) / 10),
-      kills: this.zsim.kills,
+      kills: this.stats.kills,
       seed: this.seed,
     };
     input.unlock();
+    this.net?.send({ t: 'dead' });
     this.onDeath?.(info);
   }
 
@@ -1099,7 +1100,7 @@ export class Game {
       world: this.items.serialize(),
       campfires: this.campfires.map((c) => ({ x: c.x, y: c.y, z: c.z, t: c.t })),
       pumps: { ...(this.savedPumps || {}), ...pumps },
-      stats: { kills: this.zsim.kills },
+      stats: { kills: this.stats.kills },
     };
   }
 
@@ -1123,7 +1124,7 @@ export class Game {
       e.mode = 'inv';
       return e;
     });
-    this.zsim.kills = s.stats?.kills || 0;
+    this.stats.kills = s.stats?.kills || 0;
     for (const c of s.campfires || []) this.addCampfire(c.x, c.y, c.z, c.t);
     this.world.update(p.pos.x, p.pos.z, 6);
     p.pos.y = this.world.groundAt(p.pos.x, p.pos.z, p.pos.y + 0.8, 0.8);
@@ -1133,4 +1134,4 @@ export class Game {
   }
 }
 
-Object.assign(Game.prototype, InteractionMixin);
+Object.assign(Game.prototype, InteractionMixin, NetMixin);

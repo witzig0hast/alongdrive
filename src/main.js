@@ -53,8 +53,28 @@ const app = {
     menus.hideAll();
     document.getElementById('loading').classList.add('hidden');
     input.lock();
+    this.ensureLock();
+  },
+  ensureLock() {
+    setTimeout(() => {
+      if (game.running && !input.locked && !game.uiOpen && !game.dead && !menus.current) {
+        document.getElementById('click-to-play').classList.remove('hidden');
+        game.paused = true;
+      }
+    }, 600);
+  },
+  async mpRespawn() {
+    const o = this.lastMp;
+    if (!o) return this.quit();
+    const code = game.net?.code || o.code;
+    game.stop();
+    await this.startMp({ ...o, mode: 'join', code }).catch((e) => {
+      alert('Respawn fehlgeschlagen: ' + e.message);
+      this.quit();
+    });
   },
   async startMp(opts) {
+    this.lastMp = opts;
     game.audio.init();
     const net = new NetClient(opts.url, opts.name);
     await net.connect();
@@ -71,11 +91,15 @@ const app = {
     document.getElementById('loading').classList.add('hidden');
     game.hud.toast(`Lobby-Code: ${info.code} – T: Chat`);
     input.lock();
+    this.ensureLock();
   },
   resume() {
+    game.audio.init();
     menus.hideAll();
+    document.getElementById('click-to-play').classList.add('hidden');
     game.paused = false;
     input.lock();
+    this.ensureLock();
   },
   async saveNow(silent) {
     if (!game.running || game.net || game.dead || !this.slot) return;
@@ -111,7 +135,7 @@ const app = {
         /* ignore */
       }
     }
-    menus.showDeath(info);
+    menus.showDeath(info, !!game.net);
   },
   quit() {
     game.stop();
@@ -163,7 +187,9 @@ document.getElementById('chatinput').addEventListener('keydown', (e) => {
 
 // Esc im Inventar
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && game.uiOpen === 'inventory') {
+  if (game.uiOpen === 'inventory' && !e.repeat && (e.code === 'Escape' || e.code === 'KeyI' || e.code === settings.bindings.inventory)) {
+    e.preventDefault();
+    input.pressedCodes.clear();
     game.toggleInventory(false);
   }
 });

@@ -26,7 +26,7 @@ class Input {
       if (!this.enabled) return;
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'F3', 'F1'].includes(e.code)) e.preventDefault();
       if (e.ctrlKey && ['KeyW', 'KeyS', 'KeyA', 'KeyD'].includes(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) this.pressedCodes.add(e.code);
+      if (this.locked && !this.keys.has(e.code)) this.pressedCodes.add(e.code);
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -47,6 +47,7 @@ class Input {
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
+      this.pressedCodes.clear();
       if (!this.locked) {
         this.keys.clear();
         this.mouseButtons.clear();
