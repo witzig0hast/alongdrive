@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Dead Desert</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23c9a063'/%3E%3Cpath d='M4 24h24l-6-10-5 6-4-8z' fill='%23402b18'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/ui/style.css" />
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="vitals">
+      <div class="bar health"><i></i><span>Gesundheit</span></div>
+      <div class="bar hunger"><i></i><span>Hunger</span></div>
+      <div class="bar thirst"><i></i><span>Durst</span></div>
+      <div class="bar stamina"><i></i><span>Ausdauer</span></div>
+      <div class="bar temp"><i></i><span id="temp-label">37.0 °C</span></div>
+    </div>
+    <div id="topright">
+      <div id="clock">Tag 1 · 07:00</div>
+      <div id="odo">0.00 km</div>
+      <div id="ambient">25 °C</div>
+    </div>
+    <div id="compass"><canvas width="520" height="36"></canvas></div>
+    <div id="crosshair"></div>
+    <div id="hint"></div>
+    <div id="progress"><i></i></div>
+    <div id="objective"></div>
+    <div id="msgs"></div>
+    <div id="hotbar"></div>
+    <canvas id="carhud" width="520" height="190" class="hidden"></canvas>
+    <div id="chat"><div id="chatlog"></div><input id="chatinput" maxlength="120" autocomplete="off" class="hidden" placeholder="Nachricht…" /></div>
+    <div id="nametags"></div>
+    <div id="debug" class="hidden"></div>
+    <div id="storm-note" class="hidden">Sandsturm!</div>
+  </div>
+
+  <div id="touch" class="hidden"></div>
+
+  <div id="inventory" class="panel hidden">
+    <h2>Inventar</h2>
+    <div class="inv-cols">
+      <div><h3>Hände</h3><div id="inv-hands" class="slots"></div></div>
+      <div><h3>Hotbar (1–5)</h3><div id="inv-hotbar" class="slots"></div></div>
+      <div><h3>Taschen</h3><div id="inv-pockets" class="slots"></div></div>
+    </div>
+    <div id="inv-info">Klicke einen Gegenstand, dann einen anderen Platz zum Verschieben. Rechtsklick: benutzen. Große Teile passen nur in die Hände.</div>
+    <div class="row"><button id="inv-use">Benutzen</button><button id="inv-drop">Fallen lassen</button><button id="inv-close">Schließen (Tab)</button></div>
+  </div>
+
+  <div id="loading" class="screen hidden"><div><h1>DEAD DESERT</h1><p id="loading-text">Welt wird erzeugt…</p><div class="loadbar"><i></i></div></div></div>
+
+  <div id="menu-main" class="screen">
+    <div class="menu-box">
+      <h1>DEAD DESERT</h1>
+      <p class="sub">Wach auf. Repariere den Wagen. Fahr, so weit du kannst.</p>
+      <div class="col">
+        <button id="btn-continue">Fortsetzen</button>
+        <button id="btn-new">Neues Spiel</button>
+        <button id="btn-saves">Spielstände</button>
+        <button id="btn-mp">Mehrspieler</button>
+        <button id="btn-settings">Einstellungen</button>
+        <button id="btn-help">Steuerung</button>
+      </div>
+      <p class="tiny">Version 1.0 · WASD, Maus, E, F · Pointer Lock</p>
+    </div>
+  </div>
+
+  <div id="menu-new" class="screen hidden">
+    <div class="menu-box">
+      <h2>Neues Spiel</h2>
+      <label>Seed (optional)<input id="new-seed" placeholder="leer = zufällig" /></label>
+      <label>Name des Spielstands<input id="new-name" placeholder="Wanderer" /></label>
+      <div class="row"><button id="new-start">Starten</button><button class="back" data-back="menu-main">Zurück</button></div>
+    </div>
+  </div>
+
+  <div id="menu-saves" class="screen hidden">
+    <div class="menu-box wide">
+      <h2>Spielstände</h2>
+      <div id="save-list" class="list"></div>
+      <div class="row"><button id="save-import">Importieren (JSON)</button><button class="back" data-back="menu-main">Zurück</button></div>
+      <input type="file" id="import-file" accept="application/json,.json" class="hidden" />
+    </div>
+  </div>
+
+  <div id="menu-mp" class="screen hidden">
+    <div class="menu-box wide">
+      <h2>Mehrspieler</h2>
+      <label>Server-URL<input id="mp-url" placeholder="ws://localhost:8080" /></label>
+      <label>Dein Name<input id="mp-name" maxlength="16" /></label>
+      <div class="two">
+        <div class="card"><h3>Lobby erstellen</h3><label>Seed (optional)<input id="mp-seed" placeholder="zufällig" /></label><button id="mp-create">Lobby erstellen</button></div>
+        <div class="card"><h3>Lobby beitreten</h3><label>Code<input id="mp-code" maxlength="6" placeholder="ABC123" /></label><button id="mp-join">Beitreten</button></div>
+      </div>
+      <p id="mp-status" class="tiny"></p>
+      <div class="row"><button class="back" data-back="menu-main">Zurück</button></div>
+    </div>
+  </div>
+
+  <div id="menu-settings" class="screen hidden">
+    <div class="menu-box wide">
+      <h2>Einstellungen</h2>
+      <div class="grid">
+        <label>Grafikqualität<select id="set-quality"><option value="low">Niedrig</option><option value="medium">Mittel</option><option value="high">Hoch</option></select></label>
+        <label>Sichtweite <b id="v-view"></b><input type="range" id="set-view" min="2" max="9" step="1" /></label>
+        <label>Mausempfindlichkeit <b id="v-sens"></b><input type="range" id="set-sens" min="0.2" max="3" step="0.05" /></label>
+        <label>Sichtfeld (FOV) <b id="v-fov"></b><input type="range" id="set-fov" min="55" max="110" step="1" /></label>
+        <label>Lautstärke <b id="v-vol"></b><input type="range" id="set-vol" min="0" max="1" step="0.01" /></label>
+      </div>
+      <h3>Tastenbelegung</h3>
+      <div id="bindings" class="grid bind"></div>
+      <div class="row"><button id="set-reset">Tasten zurücksetzen</button><button id="set-back" class="back">Zurück</button></div>
+    </div>
+  </div>
+
+  <div id="menu-help" class="screen hidden">
+    <div class="menu-box wide">
+      <h2>Steuerung</h2>
+      <table class="help">
+        <tr><td>WASD / Maus</td><td>Bewegen / Umsehen</td><td>Shift · Leertaste · Strg</td><td>Sprinten · Springen · Ducken</td></tr>
+        <tr><td>E</td><td>Aufheben / Benutzen / Ein-/Aussteigen / Teil einbauen (halten)</td><td>F · Linksklick</td><td>Gegenstand benutzen (essen, trinken, angreifen, tanken)</td></tr>
+        <tr><td>Q / G</td><td>Fallen lassen / Werfen</td><td>1–5 · Mausrad</td><td>Hotbar</td></tr>
+        <tr><td>R</td><td>Im Auto: Motor an/aus · sonst: Nachladen</td><td>Tab / I</td><td>Inventar</td></tr>
+        <tr><td>W/S · A/D</td><td>Auto: Gas/Bremse · Lenken</td><td>Leertaste · H · L · C</td><td>Auto: Handbremse · Hupe · Licht · Kamera</td></tr>
+        <tr><td>T</td><td>Chat (Mehrspieler)</td><td>F3 · Esc</td><td>Debug · Pausenmenü</td></tr>
+      </table>
+      <p class="tiny">Ziel: Teile einsammeln, Auto in der Garage zusammenbauen (Motor, Batterie, Tank, 4 Räder, Zündkerzen), tanken und losfahren.</p>
+      <div class="row"><button class="back" data-back="menu-main">Zurück</button></div>
+    </div>
+  </div>
+
+  <div id="menu-pause" class="screen hidden">
+    <div class="menu-box">
+      <h2>Pause</h2>
+      <div class="col">
+        <button id="pause-resume">Weiterspielen</button>
+        <button id="pause-save">Speichern</button>
+        <button id="pause-export">Spielstand exportieren</button>
+        <button id="pause-settings">Einstellungen</button>
+        <button id="pause-quit">Hauptmenü</button>
+      </div>
+      <p id="pause-info" class="tiny"></p>
+    </div>
+  </div>
+
+  <div id="menu-death" class="screen hidden death">
+    <div class="menu-box">
+      <h1>DU BIST TOT</h1>
+      <p id="death-cause" class="sub"></p>
+      <div id="death-stats" class="stats"></div>
+      <div class="col">
+        <button id="death-same">Gleicher Seed</button>
+        <button id="death-newworld">Neue Welt</button>
+        <button id="death-menu">Hauptmenü</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="click-to-play" class="hidden"><div>Klicke, um fortzufahren</div></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
