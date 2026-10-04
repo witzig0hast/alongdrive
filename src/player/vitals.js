@@ -35,6 +35,7 @@ export class Vitals {
 
   drink(a) {
     this.thirst = clamp(this.thirst + a, 0, 100);
+    this.temp -= a * 0.012; // Wasser kühlt etwas
   }
 
   /**
@@ -59,7 +60,8 @@ export class Vitals {
     if (ctx.inCar && ctx.carHeated) eff = eff + (22 - eff) * 0.6;
     else if (ctx.inCar) eff = eff + (22 - eff) * 0.25;
     if (ctx.fireWarmth > 0) eff = eff + (30 - eff) * ctx.fireWarmth * 0.9 + 6 * ctx.fireWarmth;
-    let target = 37 + clamp((eff - 21) * 0.085, -4.6, 3.4);
+    let target = 37 + clamp((eff - 21) * (eff < 21 ? 0.12 : 0.085), -5.5, 3.4);
+    target += (ctx.sun || 0) * 1.3; // direkte Sonneneinstrahlung (kein Schatten)
     if (ctx.sprinting) target += 0.5;
     this.temp += (target - this.temp) * dt * 0.02;
 

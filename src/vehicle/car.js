@@ -96,6 +96,22 @@ export class Car {
     return true;
   }
 
+  /** y-Komponente der Fahrzeug-Hochachse (1 = aufrecht, <0 = auf dem Dach) */
+  upY() {
+    return _v1.set(0, 1, 0).applyQuaternion(this.quat).y;
+  }
+
+  /** Wieder aufrichten (z. B. nach Überschlag) */
+  flip() {
+    const yaw = this.yawNow();
+    this.quat.setFromAxisAngle(_v1.set(0, 1, 0), yaw);
+    this.pos.y = this.world.terrain.heightAt(this.pos.x, this.pos.z) + REST_Y + 0.6;
+    this.vel.set(0, 0, 0);
+    this.ang.set(0, 0, 0);
+    this.wake();
+    this._syncVisual();
+  }
+
   isInstalled(id) {
     return !!this.installed[id];
   }

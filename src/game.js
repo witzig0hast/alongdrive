@@ -230,6 +230,7 @@ export class Game {
       });
       this.scene = null;
     }
+    this.postfx?.dispose?.();
     this.hud.show(false);
   }
 
@@ -743,7 +744,9 @@ export class Game {
     let ambient = sky.temp;
     if (indoors) ambient = ambient + (20 - ambient) * 0.35;
     this.ambientNow = ambient;
+    const shaded = indoors || !!p.seat;
     this.vitals.update(dt, {
+      sun: shaded ? (p.seat ? 0.25 : 0) * Math.max(0, sky.elevation) : Math.max(0, sky.elevation) * (1 - sky.storm),
       ambient,
       sprinting: p.sprinting && !p.seat,
       moving: p.moving,
@@ -969,6 +972,13 @@ export class Game {
     // HUD
     this.updateHud(dt);
 
+    // Sonnenblendung nur bei freier Sicht zur Sonne (Gelände/Wände verdecken sie)
+    this.sunFrame = ((this.sunFrame || 0) + 1) % 4;
+    if (this.sunFrame === 0 && sky.state.glare > 0.01) {
+      this.sunBlocked = this.rayBlocked(cam.position, sky.sunDir, 90) < 90;
+    }
+    this.sunVis = (this.sunVis ?? 1) + ((this.sunBlocked ? 0 : 1) - (this.sunVis ?? 1)) * Math.min(1, dt * 6);
+
     // Post-Parameter
     const s = sky.state;
     const heat = smooth(27, 40, s.temp) * (1 - s.storm) * (s.elevation > 0 ? 1 : 0);
@@ -977,7 +987,7 @@ export class Game {
       time: this.time,
       heat,
       horizonY: clamp(horizonY, -1, 2),
-      glare: s.glare * (p.seat && this.camMode === 'fp' ? 0.9 : 1),
+      glare: s.glare * this.sunVis * (p.seat && this.camMode === 'fp' ? 0.9 : 1),
       sun: s.sunScreen,
       dust: s.storm,
       damage: this.vitals.hurtFlash + (this.vitals.health < 20 ? (0.15 + Math.sin(this.time * 4) * 0.08) : 0),

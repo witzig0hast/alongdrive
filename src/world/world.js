@@ -503,5 +503,11 @@ export class World {
     for (const ch of this.chunks.values()) ch.dispose();
     this.chunks.clear();
     this.scene.remove(this.root);
+    this.terrainMat.map?.dispose();
+    this.terrainMat.dispose();
+    this.structMat.dispose();
+    this.rockMat.dispose();
+    for (const g of this.rockGeos) g.dispose();
+    for (const k in this.plantGeos) this.plantGeos[k].dispose();
   }
 }

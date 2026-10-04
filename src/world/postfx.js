@@ -69,6 +69,13 @@ export class PostFX {
     this.qCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   }
 
+  dispose() {
+    this.rt?.dispose();
+    this.rt = null;
+    this.quad.geometry.dispose();
+    this.material.dispose();
+  }
+
   setSize(w, h) {
     const pr = this.renderer.getPixelRatio();
     const W = Math.floor(w * pr);

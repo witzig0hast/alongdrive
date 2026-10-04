@@ -203,7 +203,6 @@ export const NetMixin = {
         this.items.muted = true;
         if (m.car) {
           if (e.mode !== 'car') {
-            e.mesh.removeFromParent();
             this.items._attach(e, new THREE.Vector3(m.car.x, m.car.y, m.car.z));
           } else e.local.set(m.car.x, m.car.y, m.car.z);
         } else {

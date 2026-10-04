@@ -140,6 +140,21 @@ export const InteractionMixin = {
       } else if (door) hints.push('Hände frei haben zum Einsteigen (Q: ablegen)');
     }
 
+    // Umgekipptes Auto aufrichten (E halten)
+    if (!eAct && !it && car.upY() < 0.6 && Math.abs(car.speed) < 2.5 && this.nearCarFiller(player.pos)) {
+      hints.push('[E halten] Auto aufrichten');
+      if (eDown) {
+        this.holdFlip = (this.holdFlip || 0) + dt;
+        progress = this.holdFlip / 2.5;
+        if (this.holdFlip >= 2.5) {
+          this.holdFlip = 0;
+          car.flip();
+          this.audio.play('install', { pos: car.pos });
+          this.hud.toast('Auto aufgerichtet');
+        }
+      } else this.holdFlip = 0;
+    } else this.holdFlip = 0;
+
     // Halten-Fortschritt (Einbau)
     if (eAct && eAct.kind === 'install') {
       const s = SLOTS[eAct.slot];

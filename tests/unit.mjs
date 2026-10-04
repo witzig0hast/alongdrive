@@ -168,6 +168,15 @@ test('Durst, Hunger und Unterkühlung kosten Gesundheit', () => {
   for (let i = 0; i < 4000; i++) c.update(0.5, { ambient: -2, sprinting: false, moving: false });
   assert.ok(c.temp < 36, 'temp ' + c.temp);
 });
+test('Mittagssonne ohne Schatten überhitzt, Schatten schützt', () => {
+  const sun = new Vitals();
+  const shade = new Vitals();
+  for (let i = 0; i < 600; i++) {
+    sun.update(0.5, { ambient: 38, sun: 1 });
+    shade.update(0.5, { ambient: 38, sun: 0 });
+  }
+  assert.ok(sun.temp > 39.4 && shade.temp < 38.8, `sun ${sun.temp} shade ${shade.temp}`);
+});
 test('Lagerfeuer wärmt', () => {
   const a = new Vitals();
   const b = new Vitals();

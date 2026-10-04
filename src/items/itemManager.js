@@ -1,12 +1,62 @@
 // Physische Gegenstände: Welt-Physik, Aufheben, Werfen, Ladefläche, Chunk-Loot, Speichern
 import * as THREE from 'three';
 import { ITEM_DEFS, defaultState } from './defs.js';
-import { makeItemMesh } from './models.js';
+import { makeItemMesh, itemGeometry, itemMaterial } from './models.js';
 import { BED } from '../vehicle/carDef.js';
 
 const _v = new THREE.Vector3();
 const _p = { x: 0, z: 0 };
 const VIS_DIST = 140;
+const BATCH_CAP = 96;
+const _m = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _e = new THREE.Euler();
+const _one = new THREE.Vector3(1, 1, 1);
+const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
+
+/** Instanziertes Rendering aller in der Welt liegenden Gegenstände eines Typs */
+class ItemBatch {
+  constructor(type, group) {
+    this.mesh = new THREE.InstancedMesh(itemGeometry(type), itemMaterial, BATCH_CAP);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+    this.mesh.count = 0;
+    this.slots = new Array(BATCH_CAP).fill(null);
+    this.free = [];
+    this.high = 0;
+    group.add(this.mesh);
+  }
+
+  add(e) {
+    let i = this.free.pop();
+    if (i === undefined) {
+      if (this.high >= BATCH_CAP) return -1;
+      i = this.high++;
+      this.mesh.count = this.high;
+    }
+    this.slots[i] = e;
+    return i;
+  }
+
+  remove(i) {
+    this.slots[i] = null;
+    this.free.push(i);
+    this.mesh.setMatrixAt(i, _zero);
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  set(i, pos, yaw, tx, tz, visible) {
+    if (!visible) this.mesh.setMatrixAt(i, _zero);
+    else {
+      _e.set(tx, yaw, tz, 'XYZ');
+      _q.setFromEuler(_e);
+      _m.compose(pos, _q, _one);
+      this.mesh.setMatrixAt(i, _m);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
 const PHYS_DIST = 110;
 
 export class ItemEntity {
@@ -24,7 +74,9 @@ export class ItemEntity {
     this.yaw = 0;
     this.spin = new THREE.Vector3();
     this.asleep = true;
-    this.mesh = null;
+    this.mesh = null; // nur im Auto (Ladefläche): echtes Mesh; in der Welt: Instanz im Batch
+    this.batch = null;
+    this.bidx = -1;
     this.visible = true;
     this.netDirty = false;
   }
@@ -42,6 +94,7 @@ export class ItemManager {
     this.clientId = 'x';
     this.group = new THREE.Group();
     scene.add(this.group);
+    this.batches = new Map();
     this.visTimer = 0;
     this.listeners = { settle: null, pick: null, drop: null, remove: null };
     this.netMode = false;
@@ -51,15 +104,42 @@ export class ItemManager {
     return `D:${this.clientId}:${++this.counter}:${Date.now() % 100000}`;
   }
 
+  _batchAdd(e) {
+    let list = this.batches.get(e.type);
+    if (!list) this.batches.set(e.type, (list = []));
+    for (const b of list) {
+      const i = b.add(e);
+      if (i >= 0) {
+        e.batch = b;
+        e.bidx = i;
+        return;
+      }
+    }
+    const nb = new ItemBatch(e.type, this.group);
+    list.push(nb);
+    e.batch = nb;
+    e.bidx = nb.add(e);
+  }
+
+  _unrender(e) {
+    if (e.batch) {
+      e.batch.remove(e.bidx);
+      e.batch = null;
+      e.bidx = -1;
+    }
+    if (e.mesh) {
+      e.mesh.removeFromParent();
+      e.mesh = null;
+    }
+  }
+
   create(uid, type, state, pos, opts = {}) {
     const e = new ItemEntity(uid, type, state || defaultState(type));
     e.pos.copy(pos);
     e.yaw = opts.yaw ?? Math.random() * Math.PI * 2;
     if (opts.vel) e.vel.copy(opts.vel);
     e.asleep = opts.asleep ?? true;
-    e.mesh = makeItemMesh(type);
-    e.mesh.userData.item = e;
-    this.group.add(e.mesh);
+    this._batchAdd(e);
     this._sync(e);
     this.items.set(uid, e);
     return e;
@@ -74,16 +154,14 @@ export class ItemManager {
 
   /** Aus Inventar wieder in die Welt (behält uid) */
   place(e, pos, vel) {
+    this._unrender(e);
     e.mode = 'world';
     e.pos.copy(pos);
     e.vel.copy(vel || _v.set(0, 0, 0));
     e.asleep = false;
+    e.visible = true;
     e.spin.set((Math.random() - 0.5) * 5, 0, (Math.random() - 0.5) * 5);
-    if (!e.mesh) {
-      e.mesh = makeItemMesh(e.type);
-      e.mesh.userData.item = e;
-    }
-    this.group.add(e.mesh);
+    this._batchAdd(e);
     this._sync(e);
     if (!this.items.has(e.uid)) this.items.set(e.uid, e);
     this.listeners.drop?.(e);
@@ -91,10 +169,7 @@ export class ItemManager {
   }
 
   _sync(e) {
-    if (e.mode === 'world' && e.mesh) {
-      e.mesh.position.copy(e.pos);
-      e.mesh.rotation.set(e.tiltX || 0, e.yaw, e.tiltZ || 0);
-    }
+    if (e.mode === 'world' && e.batch) e.batch.set(e.bidx, e.pos, e.yaw, e.tiltX || 0, e.tiltZ || 0, e.visible);
   }
 
   onChunkLoaded(chunk) {
@@ -106,19 +181,16 @@ export class ItemManager {
       const y0 = this.world.groundAt(l.x, l.z, l.y + 0.1, 0.1);
       const p = new THREE.Vector3(l.x, y0 + def.h / 2 + 0.005, l.z);
       const e = this.create(l.uid, l.type, l.state, p, { yaw: ((l.x * 7.3 + l.z * 3.1) % 6.28) });
-      if (def.cat === 'part' && def.slot === 'wheel') e.mesh.rotation.z = 0;
     }
   }
 
   /** Von der Welt entfernen (aufgehoben/verbraucht). Gibt Entity zurück. */
   take(e, silent = false) {
-    if (e.mode === 'car') this._detach(e);
+    const wasWorld = e.mode === 'world';
     if (e.uid.startsWith('L:') || e.uid.startsWith('S:')) this.taken.add(e.uid);
     this.items.delete(e.uid);
-    if (e.mesh) {
-      e.mesh.removeFromParent();
-      e.mesh = null;
-    }
+    this._unrender(e);
+    if (wasWorld) this.wakeAround(e.pos.x, e.pos.z, 0.6); // darauf liegende Gegenstände fallen herunter
     e.mode = 'inv';
     if (!silent) this.listeners.pick?.(e);
     return e;
@@ -126,7 +198,7 @@ export class ItemManager {
 
   /** Gegenstand verschwindet komplett (verbraucht) */
   destroy(e, silent = false) {
-    if (this.items.has(e.uid) || e.mesh) this.take(e, true);
+    if (this.items.has(e.uid) || e.mesh || e.batch) this.take(e, true);
     if (!silent) this.listeners.remove?.(e);
   }
 
@@ -159,6 +231,7 @@ export class ItemManager {
   }
 
   _attach(e, local) {
+    this._unrender(e);
     e.mode = 'car';
     e.local.copy(local);
     e.lvy = 0;
@@ -166,6 +239,9 @@ export class ItemManager {
     e.spin.set(0, 0, 0);
     e.tiltX = e.tiltZ = 0;
     e.asleep = true;
+    e.visible = true;
+    e.mesh = makeItemMesh(e.type);
+    e.mesh.userData.item = e;
     this.car.group.add(e.mesh);
     e.mesh.position.copy(e.local);
     e.mesh.rotation.set(0, e.yaw - this.car.yawNow(), 0);
@@ -177,18 +253,16 @@ export class ItemManager {
     this.car.group.updateMatrixWorld(true);
     e.mesh.getWorldPosition(e.pos);
     e.yaw = this.car.yawNow() + e.mesh.rotation.y;
+    e.mesh.removeFromParent();
+    e.mesh = null;
     e.mode = 'world';
-    this.group.add(e.mesh);
+    this._batchAdd(e);
     this._sync(e);
   }
 
   /** Legt Gegenstand gezielt auf die Ladefläche */
   loadIntoCar(e, localPos) {
     if (e.mode !== 'world' && e.mode !== 'inv') return;
-    if (!e.mesh) {
-      e.mesh = makeItemMesh(e.type);
-      e.mesh.userData.item = e;
-    }
     this.items.set(e.uid, e);
     e.yaw = this.car.yawNow() + (Math.random() - 0.5) * 0.6;
     this._attach(e, localPos);
@@ -206,10 +280,10 @@ export class ItemManager {
         }
         const d = Math.hypot(e.pos.x - focus.x, e.pos.z - focus.z);
         const v = d < VIS_DIST;
-        if (v !== e.visible && e.mesh) {
-          e.mesh.visible = v;
+        if (v !== e.visible) {
+          e.visible = v;
+          this._sync(e);
         }
-        e.visible = v;
       }
     }
     const car = this.car;
@@ -255,7 +329,19 @@ export class ItemManager {
       e.pos.x = _p.x;
       e.pos.z = _p.z;
     }
-    const g = this.world.groundAt(e.pos.x, e.pos.z, e.pos.y - half + 0.2, 0.2);
+    let g = this.world.groundAt(e.pos.x, e.pos.z, e.pos.y - half + 0.2, 0.2);
+    // Stapeln: auf anderen liegenden Gegenständen abstellen
+    const re = Math.min(0.2, e.def.radius * 0.5);
+    for (const o of this.items.values()) {
+      if (o === e || o.mode !== 'world') continue;
+      const dx = o.pos.x - e.pos.x;
+      if (dx > 0.45 || dx < -0.45) continue;
+      const dz = o.pos.z - e.pos.z;
+      const rr = re + Math.min(0.2, o.def.radius * 0.5);
+      if (dx * dx + dz * dz > rr * rr) continue;
+      const top = o.pos.y + o.half;
+      if (top > g && top <= e.pos.y - half + 0.2) g = top;
+    }
     if (e.pos.y - half <= g) {
       e.pos.y = g + half;
       if (e.vel.y < -2.2) {
@@ -340,7 +426,7 @@ export class ItemManager {
   }
 
   clear() {
-    for (const e of this.items.values()) e.mesh?.removeFromParent();
+    for (const e of this.items.values()) this._unrender(e);
     this.items.clear();
     this.taken.clear();
     this.spawned.clear();
