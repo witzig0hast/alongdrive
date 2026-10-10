@@ -41,6 +41,10 @@ export class AuthService {
     this.attempts = new Map();
     this.discovery = null;
     this.load();
+    if (this.oidc) {
+      this.getDiscovery().then((d) => console.log(`[auth] SSO aktiv (${this.oidc.name || 'OIDC'}): ${this.oidc.issuer} – Redirect-URI: ${(this.publicUrl || '<PUBLIC_URL>')}/auth/oidc/callback`)).catch((e) => console.error('[auth] SSO konfiguriert, aber Discovery fehlgeschlagen:', e.message, '– Issuer-URL prüfen:', this.oidc.issuer));
+      if (!this.publicUrl) console.warn('[auth] PUBLIC_URL ist nicht gesetzt – die SSO-Redirect-URI wird aus dem Host-Header abgeleitet. Hinter einem Reverse-Proxy bitte PUBLIC_URL setzen.');
+    } else console.log('[auth] SSO ist AUS – zum Aktivieren OIDC_ISSUER, OIDC_CLIENT_ID und OIDC_CLIENT_SECRET setzen (leere Werte zählen als nicht gesetzt).');
     setInterval(() => this.gc(), 10 * 60 * 1000).unref();
   }
 
