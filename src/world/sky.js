@@ -1,6 +1,7 @@
 // Himmel: Farbverlauf, Sonne, Mond, Sterne, Nebel, Licht – gesteuert durch Tageszeit und Sandsturm.
 import * as THREE from 'three';
 import { smooth, lerp, clamp, mulberry32 } from '../core/rng.js';
+import { primGeometry } from './prims.js';
 import { hourOf, sunDirection, sunElevation, stormIntensity, ambientTemp } from './weather.js';
 
 const C = (r, g, b) => new THREE.Color(r, g, b);
@@ -73,6 +74,27 @@ export class Sky {
     this.moon.renderOrder = -8;
     scene.add(this.moon);
 
+    // Wolken: flache Low-Poly-Wolkenbänke im Ring um die Kamera, driften langsam
+    const cr = mulberry32(99);
+    const puffs = [];
+    for (let i = 0; i < 34; i++) {
+      const a = cr() * Math.PI * 2;
+      const r = 220 + cr() * 420;
+      const cx = Math.cos(a) * r;
+      const cz = Math.sin(a) * r;
+      const cy = 170 + cr() * 150;
+      const n = 4 + Math.floor(cr() * 5);
+      for (let k = 0; k < n; k++) {
+        const sc = 28 + cr() * 38;
+        puffs.push({ s: 'sph', p: [cx + (k - n / 2) * sc * 0.9 + (cr() - 0.5) * 20, cy + (cr() - 0.5) * 6, cz + (cr() - 0.5) * 40], z: [sc, sc * 0.28, sc * 0.8], c: 0xffffff });
+      }
+    }
+    this.cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, fog: false, depthWrite: false });
+    this.clouds = new THREE.Mesh(primGeometry(puffs), new THREE.MeshBasicMaterial({ vertexColors: false, color: 0xffffff, transparent: true, opacity: 0.75, fog: false, depthWrite: false }));
+    this.clouds.frustumCulled = false;
+    this.clouds.renderOrder = -7;
+    scene.add(this.clouds);
+
     // Lichter
     this.sun = new THREE.DirectionalLight(0xffffff, 2);
     this.sun.castShadow = quality.shadows;
@@ -144,6 +166,15 @@ export class Sky {
     this.moon.position.copy(cp).addScaledVector(this.sunDir, -far * 0.85);
     this.moon.scale.setScalar(far * 0.85);
     this.moon.visible = night > 0.1;
+
+    // Wolken: Tönung nach Tageszeit/Sturm, Drift
+    this.clouds.position.set(cp.x, 0, cp.z);
+    this.clouds.rotation.y = gameTime * 0.004;
+    const cm = this.clouds.material;
+    cm.color.copy(hz).lerp(new THREE.Color(1, 1, 1), 0.55 * d + 0.1).multiplyScalar(lerp(0.35, 1.05, d));
+    cm.color.lerp(STORM_C, storm * 0.8);
+    cm.opacity = lerp(0.8, 0.95, storm) * (1 - 0.35 * night);
+    this.clouds.visible = true;
 
     // Lichter
     const sunUp = this.sunDir.y > 0;

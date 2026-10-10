@@ -12,6 +12,7 @@ export class AudioEngine {
     this.wind = null;
     this.noiseBuf = null;
     this.fire = null;
+    this.radio = { station: 0, next: 0, step: 0, out: null };
   }
 
   init() {
@@ -153,6 +154,94 @@ export class AudioEngine {
     this.skid = { g: skg, f: skf };
   }
 
+  // ------------------------------------------------------------ Autoradio
+  static STATIONS = ['Aus', 'Dust FM 88.1', 'Roadkill Rock 101.7', 'Rauschen 1620 AM'];
+
+  setStation(n) {
+    this.radio.station = n % AudioEngine.STATIONS.length;
+    this.radio.step = 0;
+    if (this.ready) this.radio.next = this.ctx.currentTime + 0.1;
+    return AudioEngine.STATIONS[this.radio.station];
+  }
+
+  _radioOut() {
+    if (!this.radio.out) {
+      const c = this.ctx;
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 3200;
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 140;
+      const g = c.createGain();
+      g.gain.value = 0;
+      lp.connect(hp);
+      hp.connect(g);
+      g.connect(this.master);
+      this.radio.out = { in: lp, g };
+    }
+    return this.radio.out;
+  }
+
+  _note(dest, f, t, dur, type, gain) {
+    const c = this.ctx;
+    const o = c.createOscillator();
+    o.type = type;
+    o.frequency.value = f;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(dest);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  _radioTick(on, inCar) {
+    const R = this.radio;
+    const out = this._radioOut();
+    const c = this.ctx;
+    out.g.gain.setTargetAtTime(on && R.station ? (inCar ? 0.5 : 0.12) : 0, c.currentTime, 0.1);
+    if (!on || !R.station) return;
+    const A = (m) => 220 * Math.pow(2, m / 12);
+    while (R.next < c.currentTime + 0.35) {
+      const t = Math.max(R.next, c.currentTime);
+      const i = R.step++;
+      if (R.station === 1) {
+        // ruhiger Wüsten-Arpeggio-Sound in A-Moll-Pentatonik
+        const scale = [0, 3, 7, 10, 12, 15, 19];
+        const prog = [0, -2, -4, -5];
+        const bar = Math.floor(i / 8) % 4;
+        const n = scale[[0, 2, 4, 2, 5, 4, 2, 1][i % 8]] + prog[bar];
+        this._note(out.in, A(n + 12), t, 0.9, 'triangle', 0.22);
+        if (i % 8 === 0) {
+          this._note(out.in, A(prog[bar] - 12), t, 3.2, 'sine', 0.35);
+          this._note(out.in, A(prog[bar] + 7), t, 3.2, 'triangle', 0.1);
+        }
+        R.next += 0.42;
+      } else if (R.station === 2) {
+        // Rock-Riff: Bass + Powerchords + Hi-Hat
+        const riff = [0, 0, 3, 0, 5, 3, 0, -2];
+        const n = riff[i % 8];
+        this._note(out.in, A(n - 24), t, 0.2, 'sawtooth', 0.4);
+        if (i % 2 === 0) {
+          this._note(out.in, A(n - 12), t, 0.28, 'square', 0.12);
+          this._note(out.in, A(n - 5), t, 0.28, 'square', 0.1);
+        }
+        if (i % 4 === 0) this._tone(out.in, { f0: 150, f1: 45, dur: 0.18, gain: 0.7, delay: t - c.currentTime });
+        else if (i % 4 === 2) this._burst(out.in, { dur: 0.12, f0: 2500, f1: 900, type: 'bandpass', gain: 0.45, delay: t - c.currentTime });
+        this._burst(out.in, { dur: 0.04, f0: 9000, f1: 7000, type: 'highpass', gain: 0.18, delay: t - c.currentTime });
+        R.next += 0.25;
+      } else {
+        // Rauschen mit gelegentlichem Zahlenfunk-Piepen
+        this._burst(out.in, { dur: 0.5, f0: 1500 + Math.random() * 1500, f1: 800, type: 'bandpass', q: 0.4, gain: 0.35, delay: t - c.currentTime });
+        if (i % 6 === 3) for (let k = 0; k < 3; k++) this._note(out.in, 880 + (i % 4) * 110, t + k * 0.22, 0.12, 'sine', 0.3);
+        R.next += 0.5;
+      }
+    }
+  }
+
   /** Dauerhafte Klänge. s: {car:{on,rpm,load,speed,skid,dist,inCar}, storm, speed, fire, night} */
   update(dt, s) {
     if (!this.ready) return;
@@ -171,6 +260,7 @@ export class AudioEngine {
       L.upY.value = 1;
       L.upZ.value = 0;
     }
+    this._radioTick(!!s.radioOk, !!s.inCar);
     // Wind
     const w = clamp(0.05 + s.storm * 0.55 + Math.min(1, (s.carSpeed || 0) / 40) * (s.inCar ? 0.12 : 0.2), 0, 0.8);
     this.wind.g.gain.setTargetAtTime(w * 0.35, t, 0.4);

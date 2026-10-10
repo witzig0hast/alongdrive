@@ -27,6 +27,7 @@ import { AudioEngine } from './audio/audio.js';
 import { HUD } from './ui/hud.js';
 import { preloadIcons } from './ui/icons.js';
 import { NetMixin } from './net/mpGame.js';
+import { drawMap } from './ui/map.js';
 
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -94,6 +95,10 @@ export class Game {
     this.campfires = [];
     this.lightSources = new Map(); // chunkKey -> lights
     this.stats = { kills: 0 };
+    this.discovered = new Map();
+    this.mapOpen = false;
+    this.mapScale = 2.5;
+    this.scanT = 0;
     this.time = 0;
     this.camMode = 'fp';
     this.camHeading = 0;
@@ -218,6 +223,8 @@ export class Game {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.audio.hornStop();
+    this.audio.setStation(0);
+    document.getElementById('map')?.classList.add('hidden');
     this.net?.disconnect?.();
     this.net = null;
     if (this.scene) {
@@ -355,6 +362,39 @@ export class Game {
     this.net?.send({ t: 'seat', seat, on: false });
   }
 
+  toggleMap() {
+    this.mapOpen = !this.mapOpen;
+    document.getElementById('map').classList.toggle('hidden', !this.mapOpen);
+    this.audio.play('click');
+  }
+
+  cycleRadio() {
+    const bat = this.car.battery();
+    if (!bat || bat.charge < 0.03) return this.hud.toast('Radio: keine Batterie');
+    const name = this.audio.setStation(this.audio.radio.station + 1);
+    this.hud.toast('📻 ' + name);
+    this.audio.play('click');
+  }
+
+  /** Entdeckt Orte in der Nähe (Karte) */
+  scanDiscovery(dt) {
+    this.scanT -= dt;
+    if (this.scanT > 0) return;
+    this.scanT = 1;
+    const p = this.player.pos;
+    for (const ch of this.world.chunks.values()) {
+      if (Math.abs(ch.centerX - p.x) > 400 || Math.abs(ch.centerZ - p.z) > 400) continue;
+      for (const poi of ch.content.pois) {
+        const key = Math.round(poi.x) + ',' + Math.round(poi.z);
+        if (this.discovered.has(key)) continue;
+        if (Math.hypot(poi.x - p.x, poi.z - p.z) < poi.r + 130) {
+          this.discovered.set(key, { type: poi.type, x: poi.x, z: poi.z });
+          if (poi.type !== 'garage') this.hud.toast('📍 Entdeckt: ' + (poi.type === 'gas_station' ? 'Tankstelle' : poi.type === 'settlement' ? 'Siedlung' : poi.type === 'military' ? 'Militärposten' : poi.type === 'water_tower' ? 'Wasserturm' : poi.type === 'radio_mast' ? 'Funkmast' : poi.type === 'wreck' ? 'Autowrack' : poi.type === 'house' ? 'Haus' : 'Schuppen'));
+        }
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ Lagerfeuer
   placeCampfire() {
     const p = this.player;
@@ -437,6 +477,12 @@ export class Game {
           this.debugOn = this.hud.toggleDebug();
         }
         for (let i = 0; i < 5; i++) if (input.codePressed('Digit' + (i + 1))) this.selectSlot(i);
+        if (input.pressed('map')) this.toggleMap();
+        if (this.mapOpen) {
+          if (input.codePressed('Equal') || input.codePressed('NumpadAdd') || input.codePressed('BracketRight')) this.mapScale = Math.max(1.5, this.mapScale / 1.5);
+          if (input.codePressed('Minus') || input.codePressed('NumpadSubtract') || input.codePressed('Slash')) this.mapScale = Math.min(24, this.mapScale * 1.5);
+        }
+        if (input.pressed('radio') && (player.seat || this.car.pos.distanceTo(player.pos) < 6)) this.cycleRadio();
       } else if (this.uiOpen === 'inventory' && (input.pressed('inventory') || input.codePressed('KeyI'))) this.toggleInventory(false);
     }
     if (this.wheelDelta) {
@@ -469,6 +515,10 @@ export class Game {
     }
     const amb = this.sky.state.temp;
     car.update(dt, { ambient: amb });
+    if (this.audio.radio.station && !car.engineOn && car.battery()) {
+      car.battery().charge = Math.max(0, car.battery().charge - 0.0002 * dt);
+      if (car.battery().charge <= 0.02) this.audio.setStation(0);
+    }
     if (car.driver === 'local') {
       car.steer += 0; // Lenkung wird in driveControls geglättet
     }
@@ -506,6 +556,7 @@ export class Game {
         if (input.pressed('throw')) this.dropHeld(true);
       }
     }
+    this.scanDiscovery(dt);
     this.updateEffects(dt);
     this.updateLights(dt);
     this.updateCampfires(dt);
@@ -1037,6 +1088,13 @@ export class Game {
     if (this.net) for (const r of this.net.remotes.values()) marks.push({ dx: r.pos.x - p.pos.x, dz: r.pos.z - p.pos.z, color: '#6cf' });
     hud.drawCompass(yaw, marks);
     hud.drawCar(this.car, !!p.seat);
+    if (this.mapOpen) {
+      this.mapT = (this.mapT || 0) - dt;
+      if (this.mapT <= 0) {
+        this.mapT = 0.1;
+        drawMap(document.querySelector('#map canvas'), this);
+      }
+    }
     if (this.debugOn) {
       const ch = this.world.chunks.size;
       hud.setDebug(
@@ -1056,6 +1114,7 @@ export class Game {
       pos: camPos,
       fwd: this.cameraForward(_v1),
       storm: s.storm,
+      radioOk: !!(car.battery() && car.battery().charge > 0.02 && this.audio.radio.station && car.pos.distanceTo(camPos) < 40),
       inCar: !!p.seat,
       carSpeed: Math.abs(car.speed),
       fire: this.fireNow || 0,
@@ -1116,6 +1175,7 @@ export class Game {
       campfires: this.campfires.map((c) => ({ x: c.x, y: c.y, z: c.z, t: c.t })),
       pumps: { ...(this.savedPumps || {}), ...pumps },
       stats: { kills: this.stats.kills },
+      discovered: [...this.discovered.values()],
     };
   }
 
@@ -1140,6 +1200,7 @@ export class Game {
       return e;
     });
     this.stats.kills = s.stats?.kills || 0;
+    for (const d of s.discovered || []) this.discovered.set(Math.round(d.x) + ',' + Math.round(d.z), d);
     for (const c of s.campfires || []) this.addCampfire(c.x, c.y, c.z, c.t);
     this.world.update(p.pos.x, p.pos.z, 6);
     p.pos.y = this.world.groundAt(p.pos.x, p.pos.z, p.pos.y + 0.8, 0.8);

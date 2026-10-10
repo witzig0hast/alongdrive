@@ -1,5 +1,9 @@
 // Spielstände in IndexedDB + Export/Import als JSON
-const DB_NAME = 'deaddesert';
+let DB_NAME = 'deaddesert';
+/** Spielstände je Account trennen (mehrere Nutzer am selben Browser) */
+export function setSaveScope(id) {
+  DB_NAME = id ? 'deaddesert-' + id : 'deaddesert';
+}
 const STORE = 'saves';
 
 function open() {

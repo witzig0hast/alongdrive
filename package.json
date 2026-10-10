@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server/server.js",
-    "test": "node tests/unit.mjs && node tests/car.mjs"
+    "test": "node tests/unit.mjs && node tests/car.mjs && node tests/auth.mjs && node tests/oidc.mjs"
   },
   "dependencies": {
     "simplex-noise": "^4.0.3",

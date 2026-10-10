@@ -5,7 +5,7 @@ import { input } from '../core/input.js';
 import { SaveStore } from '../save/save.js';
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['menu-main', 'menu-new', 'menu-saves', 'menu-mp', 'menu-settings', 'menu-help', 'menu-pause', 'menu-death', 'loading'];
+const SCREENS = ['menu-scores', 'menu-main', 'menu-new', 'menu-saves', 'menu-mp', 'menu-settings', 'menu-help', 'menu-pause', 'menu-death', 'loading'];
 
 export class Menus {
   constructor(app) {
@@ -50,6 +50,11 @@ export class Menus {
       this.app.startNew(seed, name);
     };
     $('btn-saves').onclick = () => this.showSaves();
+    $('btn-scores').onclick = () => this.showScores();
+    $('btn-logout').onclick = async () => {
+      await fetch('/auth/logout', { method: 'POST' }).catch(() => {});
+      location.href = '/login';
+    };
     $('btn-mp').onclick = () => this.showMp();
     $('btn-settings').onclick = () => {
       this.returnTo = 'menu-main';
@@ -97,6 +102,28 @@ export class Menus {
       e.target.value = '';
     };
     $('click-to-play').onclick = () => this.app.resume();
+  }
+
+  setUser(user) {
+    $('userbar').classList.remove('hidden');
+    $('user-name').textContent = '👤 ' + user.username + (user.role === 'admin' ? ' (Admin)' : '');
+    $('admin-link').classList.toggle('hidden', user.role !== 'admin');
+    $('mp-name-label').classList.add('hidden');
+  }
+
+  async showScores() {
+    const top = $('scores-top');
+    const mine = $('scores-mine');
+    top.innerHTML = mine.innerHTML = '<p class="tiny">Lade …</p>';
+    this.show('menu-scores');
+    try {
+      const j = await (await fetch('/api/scores')).json();
+      const row = (s, i, me) => `<div class="item ${me ? 'me' : ''}">${i != null ? `<span class="rank">${i + 1}.</span>` : ''}<div class="meta"><b>${esc(s.name)}</b> · ${s.km.toFixed(1)} km<br>${s.days} Tage · ${s.kills} Kills · ${esc(s.cause || '')} · ${new Date(s.at).toLocaleDateString()}${s.mp ? ' · Koop' : ''}</div></div>`;
+      top.innerHTML = j.top.length ? j.top.map((s, i) => row(s, i, this.app.user && s.name === this.app.user.username)).join('') : '<p class="tiny">Noch keine Einträge.</p>';
+      mine.innerHTML = j.mine.length ? j.mine.map((s) => row(s, null, false)).join('') : '<p class="tiny">Noch keine Läufe.</p>';
+    } catch {
+      top.innerHTML = mine.innerHTML = '<p class="tiny">Bestenliste nur im Server-Betrieb verfügbar.</p>';
+    }
   }
 
   async showSaves() {

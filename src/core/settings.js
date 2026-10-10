@@ -19,6 +19,8 @@ export const DEFAULT_BINDINGS = {
   camera: 'KeyC',
   inventory: 'Tab',
   chat: 'KeyT',
+  radio: 'KeyN',
+  map: 'KeyM',
 };
 
 export const BINDING_LABELS = {
@@ -39,6 +41,8 @@ export const BINDING_LABELS = {
   camera: 'Kamera (Auto)',
   inventory: 'Inventar',
   chat: 'Chat',
+  radio: 'Autoradio',
+  map: 'Karte',
 };
 
 const DEFAULTS = {

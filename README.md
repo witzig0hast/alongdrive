@@ -116,6 +116,42 @@ tests/car.mjs            Stabilitäts-/Plausibilitätstests der Fahrphysik
 Dockerfile, docker-compose.yml
 ```
 
+## Anmeldung, Accounts und SSO
+
+Im Server-Betrieb (`npm run server` / Docker) ist **alles hinter einer Anmeldung**: ohne Session sieht man nur die Login-Seite,
+Client-Dateien und WebSocket sind gesperrt.
+
+- **Erster Account = Admin.** Beim allerersten Aufruf von `/login` kann einmalig ein Account registriert werden – lokal
+  (Benutzername + Passwort) **oder per SSO**. Dieser Account wird Administrator. Danach ist die Registrierung geschlossen.
+- **Weitere Konten legt der Admin an** unter `/admin` (Link im Hauptmenü): lokale Konten mit Passwort, oder
+  *SSO-Freischaltung* per E-Mail-Adresse (der Nutzer meldet sich dann einfach per SSO an und wird verknüpft).
+  Optional kann der Admin „SSO-Benutzer automatisch anlegen" einschalten.
+  Der Admin kann Rollen ändern, Konten sperren/löschen und Passwörter zurücksetzen (der letzte Admin ist geschützt).
+- **SSO (OpenID Connect, Authorization-Code-Flow mit PKCE)** – funktioniert mit Authentik, Keycloak, Authelia, Google u. a.:
+
+  | Variable | Bedeutung |
+  |---|---|
+  | `OIDC_ISSUER` | Issuer-URL (Discovery unter `<issuer>/.well-known/openid-configuration`) |
+  | `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | Zugangsdaten der Anwendung |
+  | `OIDC_NAME` | Beschriftung des Buttons (z. B. `Authentik`) |
+  | `PUBLIC_URL` | öffentliche Adresse, z. B. `https://spiel.example.de` |
+
+  Redirect-URI im Provider: `<PUBLIC_URL>/auth/oidc/callback`. Scopes: `openid profile email`.
+  *Authentik:* Provider vom Typ „OAuth2/OpenID", Client-Typ „Confidential", Redirect-URI wie oben, Scopes `openid email profile`.
+- Passwörter werden mit scrypt gehasht, Sessions liegen als Hash serverseitig (HttpOnly-Cookie, SameSite=Lax, 30 Tage),
+  Login ist gegen Brute-Force gedrosselt, schreibende Aufrufe prüfen den Origin.
+- Daten (Accounts, Sessions, Bestenliste) liegen in `DATA_DIR` (`/data`, Docker-Volume `deaddesert-data`).
+- Mehrspieler-Namen kommen vom Account (nicht fälschbar). Spielstände im Browser sind pro Account getrennt.
+- Nur für lokale Tests: `AUTH_DISABLED=1`. Im reinen `npm run dev` ohne Server gibt es keine Anmeldung (Proxy auf Port 8080
+  nutzen, wenn `npm run server` parallel läuft).
+
+## Zusatzfunktionen
+
+- **Autoradio** (`N`): drei prozedural erzeugte Sender (ruhiger Wüsten-Sound, Rock-Riff, Rauschen/Zahlenfunk); braucht Batterie.
+- **Karte** (`M`, `+`/`−` Zoom): zeigt entdeckte Orte (Garage, Schuppen, Tankstellen, Siedlungen …), dich, das Auto, Lagerfeuer und Mitspieler.
+- **Bestenliste** im Hauptmenü: weiteste Fahrten aller Accounts und die eigenen letzten Läufe.
+- **Wolken** am Himmel, die sich mit Tageszeit und Sandsturm einfärben.
+
 ## Mehrspieler
 
 1. Server starten (`npm run server` oder `docker compose up --build`).

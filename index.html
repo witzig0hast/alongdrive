@@ -56,11 +56,13 @@
     <div class="menu-box">
       <h1>DEAD DESERT</h1>
       <p class="sub">Wach auf. Repariere den Wagen. Fahr, so weit du kannst.</p>
+      <div id="userbar" class="userbar hidden"><span id="user-name"></span> <a id="admin-link" href="/admin" class="hidden">Admin</a> <button id="btn-logout" class="linklike">Abmelden</button></div>
       <div class="col">
         <button id="btn-continue">Fortsetzen</button>
         <button id="btn-new">Neues Spiel</button>
         <button id="btn-saves">Spielstände</button>
         <button id="btn-mp">Mehrspieler</button>
+        <button id="btn-scores">Bestenliste</button>
         <button id="btn-settings">Einstellungen</button>
         <button id="btn-help">Steuerung</button>
       </div>
@@ -86,11 +88,19 @@
     </div>
   </div>
 
+  <div id="menu-scores" class="screen hidden">
+    <div class="menu-box wide">
+      <h2>Bestenliste</h2>
+      <div class="two"><div><h3>Weiteste Fahrten (alle Spieler)</h3><div id="scores-top" class="list"></div></div><div><h3>Deine letzten Läufe</h3><div id="scores-mine" class="list"></div></div></div>
+      <div class="row"><button class="back" data-back="menu-main">Zurück</button></div>
+    </div>
+  </div>
+
   <div id="menu-mp" class="screen hidden">
     <div class="menu-box wide">
       <h2>Mehrspieler</h2>
       <label>Server-URL<input id="mp-url" placeholder="ws://localhost:8080" /></label>
-      <label>Dein Name<input id="mp-name" maxlength="16" /></label>
+      <label id="mp-name-label">Dein Name<input id="mp-name" maxlength="16" /></label>
       <div class="two">
         <div class="card"><h3>Lobby erstellen</h3><label>Seed (optional)<input id="mp-seed" placeholder="zufällig" /></label><button id="mp-create">Lobby erstellen</button></div>
         <div class="card"><h3>Lobby beitreten</h3><label>Code<input id="mp-code" maxlength="6" placeholder="ABC123" /></label><button id="mp-join">Beitreten</button></div>
@@ -126,6 +136,7 @@
         <tr><td>R</td><td>Im Auto: Motor an/aus · sonst: Nachladen</td><td>Tab / I</td><td>Inventar</td></tr>
         <tr><td>W/S · A/D</td><td>Auto: Gas/Bremse · Lenken</td><td>Leertaste · H · L · C</td><td>Auto: Handbremse · Hupe · Licht · Kamera</td></tr>
         <tr><td>T</td><td>Chat (Mehrspieler)</td><td>F3 · Esc</td><td>Debug · Pausenmenü</td></tr>
+        <tr><td>N</td><td>Autoradio (im Auto): Sender wechseln / aus</td><td>M</td><td>Karte (entdeckte Orte), +/− Zoom</td></tr>
       </table>
       <p class="tiny">Ziel: Teile einsammeln, Auto in der Garage zusammenbauen (Motor, Batterie, Tank, 4 Räder, Zündkerzen), tanken und losfahren.</p>
       <div class="row"><button class="back" data-back="menu-main">Zurück</button></div>
@@ -160,6 +171,7 @@
     </div>
   </div>
 
+  <div id="map" class="hidden"><canvas width="640" height="640"></canvas><div class="maphelp">M: schließen · +/−: Zoom</div></div>
   <div id="click-to-play" class="hidden"><div>Klicke, um fortzufahren</div></div>
   <script type="module" src="/src/main.js"></script>
 </body>

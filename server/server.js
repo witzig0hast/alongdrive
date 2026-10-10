@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { AuthService } from './auth.js';
 import { Terrain, CHUNK } from '../src/world/heightfield.js';
 import { genChunk, chunkKey } from '../src/world/worldgen.js';
 import { colliderBounds } from '../src/world/collision.js';
@@ -22,15 +23,40 @@ const PORT = +(process.env.PORT || 8080);
 const TICK = 1 / 20;
 const MAX_PLAYERS = +(process.env.MAX_PLAYERS || 8);
 
+const auth = new AuthService({
+  disabled: process.env.AUTH_DISABLED === '1',
+  dataDir: process.env.DATA_DIR || path.join(__dirname, '..', 'data'),
+  publicUrl: process.env.PUBLIC_URL || '',
+  oidc: {
+    issuer: process.env.OIDC_ISSUER,
+    clientId: process.env.OIDC_CLIENT_ID,
+    clientSecret: process.env.OIDC_CLIENT_SECRET,
+    scopes: process.env.OIDC_SCOPES,
+    name: process.env.OIDC_NAME || 'SSO',
+  },
+});
+if (auth.disabled) console.warn('[auth] ACHTUNG: AUTH_DISABLED=1 – jeder kann spielen!');
+if (auth.needsSetup && !auth.disabled) console.log('[auth] Noch kein Account: Der erste Registrierende (lokal oder per SSO) wird Admin → /login');
+
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.map': 'application/json',
 };
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
+  }
+  if (await auth.handle(req, res)) return;
+  if (!auth.userFromRequest(req)) {
+    if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
+      res.writeHead(302, { Location: '/login' });
+      return res.end();
+    }
+    res.writeHead(401, { 'Content-Type': 'text/plain' });
+    return res.end('Anmeldung erforderlich');
   }
   let url = decodeURIComponent((req.url || '/').split('?')[0]);
   if (url === '/') url = '/index.html';
@@ -47,8 +73,20 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 
-const wss = new WebSocketServer({ server, maxPayload: 256 * 1024 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
 const rooms = new Map();
+auth.onlineCount = () => wss.clients.size;
+server.on('upgrade', (req, socket, head) => {
+  const user = auth.userFromRequest(req);
+  if (!user) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+    return socket.destroy();
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    ws.user = user;
+    wss.emit('connection', ws, req);
+  });
+});
 let nextPlayerId = 1;
 
 function makeCode() {
@@ -228,7 +266,7 @@ const num = (v, d = 0) => (Number.isFinite(v) ? v : d);
 const vec = (a) => (Array.isArray(a) && a.length >= 3 ? [num(a[0]), num(a[1]), num(a[2])] : [0, 0, 0]);
 
 wss.on('connection', (ws) => {
-  const me = { ws, id: 'p' + nextPlayerId++, name: 'Wanderer', room: null, pos: [3, 0, 3], yaw: 0, pitch: 0, a: {}, dead: false, alive: true };
+  const me = { ws, id: 'p' + nextPlayerId++, name: ws.user?.username || 'Wanderer', uid: ws.user?.id, room: null, pos: [3, 0, 3], yaw: 0, pitch: 0, a: {}, dead: false, alive: true };
   ws.isAlive = true;
   ws.on('pong', () => (ws.isAlive = true));
 
@@ -245,7 +283,7 @@ wss.on('connection', (ws) => {
       case 'create':
       case 'join': {
         if (room) return;
-        me.name = clean(m.name);
+        me.name = clean(ws.user?.username || m.name);
         let r;
         if (m.t === 'create') {
           const code = makeCode();

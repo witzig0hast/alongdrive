@@ -2,7 +2,7 @@
 import { Game } from './game.js';
 import { Menus, defaultMpUrl } from './ui/menus.js';
 import { InventoryUI } from './ui/inventoryUI.js';
-import { SaveStore } from './save/save.js';
+import { SaveStore, setSaveScope } from './save/save.js';
 import { input } from './core/input.js';
 import { settings } from './core/settings.js';
 import { setupTouch } from './ui/touch.js';
@@ -21,6 +21,7 @@ input.touchMode = touchMode;
 if (touchMode) setupTouch(input, game);
 
 const app = {
+  user: null,
   slot: null, // aktueller Spielstand {id,name}
   lastSeed: '',
   async startNew(seed, name) {
@@ -77,7 +78,7 @@ const app = {
   async startMp(opts) {
     this.lastMp = opts;
     game.audio.init();
-    const net = new NetClient(opts.url, opts.name);
+    const net = new NetClient(opts.url, this.user ? this.user.username : opts.name);
     await net.connect();
     const info = await net.enter(opts.mode, opts);
     this.slot = null;
@@ -129,6 +130,9 @@ const app = {
     if (rec) SaveStore.exportJSON(rec);
   },
   async onDeath(info) {
+    if (this.user) {
+      fetch('/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...info, mp: !!game.net }) }).catch(() => {});
+    }
     if (this.slot) {
       try {
         await SaveStore.remove(this.slot.id);
@@ -213,3 +217,22 @@ setInterval(() => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && game.running && !game.net && !game.dead) app.saveNow(true);
 });
+
+// ---- Anmeldung (Server-Betrieb): ohne Session -> Login-Seite
+(async () => {
+  try {
+    const r = await fetch('/auth/me', { credentials: 'same-origin' });
+    if (r.status === 401) {
+      location.href = '/login';
+      return;
+    }
+    if (!r.ok) return; // kein Auth-Server (z. B. reiner Vite-Dev) -> offen
+    const { user } = await r.json();
+    app.user = user;
+    setSaveScope(user.id);
+    menus.setUser(user);
+    menus.refreshContinue();
+  } catch {
+    /* kein Server erreichbar: Einzelspieler offline */
+  }
+})();
